@@ -43,6 +43,40 @@ class MarketAnalyzer:
             return 1.0
         return stdev(self.price_history[product])
 
+class LogParser:
+    @staticmethod
+    def parse_log_line(log_line: str) -> Dict:
+        """Parse a single log line into structured data"""
+        parts = log_line.split(';')
+        
+        return {
+            'day': int(parts[0]),
+            'timestamp': int(parts[1]),
+            'product': parts[2],
+            'bids': [
+                {'price': int(parts[3]), 'volume': int(parts[4])},
+                {'price': int(parts[5]), 'volume': int(parts[6])},
+                {'price': int(parts[7]), 'volume': int(parts[8])}
+            ],
+            'asks': [
+                {'price': int(parts[9]), 'volume': int(parts[10])},
+                {'price': int(parts[11]), 'volume': int(parts[12])},
+                {'price': int(parts[13]) if parts[13] else None, 'volume': int(parts[14]) if parts[14] else None}
+            ],
+            'mid_price': float(parts[15]),
+            'profit_and_loss': float(parts[16])
+        }
+    
+    @staticmethod
+    def parse_log_file(log_file_path: str) -> List[Dict]:
+        """Parse entire log file into structured data"""
+        parsed_data = []
+        with open(log_file_path, 'r') as f:
+            for line in f:
+                if line.strip():  
+                    parsed_data.append(LogParser.parse_log_line(line.strip()))
+        return parsed_data
+
 class Trader:
     def __init__(self):
         self.position_limits = {
@@ -54,6 +88,43 @@ class Trader:
             "KELP": 2,
             "RAINFOREST_RESIN": 2
         }
+        
+    def format_order_book(self, product: str, buy_orders: Dict[int, int], sell_orders: Dict[int, int]) -> str:
+        """Format order book for easy analysis"""
+        output = []
+        output.append(f"\n=== Order Book for {product} ===")
+        output.append("\nBuy Orders (Price -> Quantity):")
+        
+        # Sort buy orders by price (descending)
+        sorted_buys = sorted(buy_orders.items(), reverse=True)
+        for price, quantity in sorted_buys:
+            output.append(f"  {price:>4} -> {quantity:>4}")
+            
+        output.append("\nSell Orders (Price -> Quantity):")
+        # Sort sell orders by price (ascending)
+        sorted_sells = sorted(sell_orders.items())
+        for price, quantity in sorted_sells:
+            output.append(f"  {price:>4} -> {quantity:>4}")
+            
+        # Calculate and show summary
+        best_bid = max(buy_orders.keys()) if buy_orders else 0
+        best_ask = min(sell_orders.keys()) if sell_orders else 0
+        mid_price = (best_bid + best_ask) / 2 if best_bid and best_ask else 0
+        spread = best_ask - best_bid if best_bid and best_ask else 0
+        
+        # Calculate total volume
+        total_buy_volume = sum(abs(qty) for qty in buy_orders.values())
+        total_sell_volume = sum(abs(qty) for qty in sell_orders.values())
+        
+        output.append("\nSummary:")
+        output.append(f"  Best Bid: {best_bid}")
+        output.append(f"  Best Ask: {best_ask}")
+        output.append(f"  Mid Price: {mid_price:.2f}")
+        output.append(f"  Spread: {spread}")
+        output.append(f"  Total Buy Volume: {total_buy_volume}")
+        output.append(f"  Total Sell Volume: {total_sell_volume}")
+        
+        return "\n".join(output)
         
     def calculate_dynamic_spread(self, product: str, volatility: float, imbalance: float) -> float:
         """Calculate dynamic spread based on volatility and order book imbalance"""
@@ -92,6 +163,9 @@ class Trader:
         for product in state.order_depths:
             order_depth: OrderDepth = state.order_depths[product]
             orders: List[Order] = []
+            
+            # Print formatted order book
+            print(self.format_order_book(product, order_depth.buy_orders, order_depth.sell_orders))
             
             if not order_depth.buy_orders or not order_depth.sell_orders:
                 continue
